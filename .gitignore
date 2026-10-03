@@ -3,27 +3,25 @@ backend/venv/
 backend/__pycache__/
 backend/**/__pycache__/
 backend/**/*.py[cod]
-
-# Python tooling
 backend/.pytest_cache/
 backend/.mypy_cache/
 backend/.ruff_cache/
 
-# Environment variables
+# Python environment variables
 backend/.env
 backend/.env.*
+.env
+.env.local
+.env.*.local
 
 # Node / React
-frontend/node_modules/
-frontend/dist/
-frontend/.vite/
+node_modules/
+dist/
+.vite/
 
 # Frontend environment variables
-frontend/.env
-frontend/.env.*
-frontend/.env.local
-frontend/.env.production
-frontend/.env.development
+.env.production
+.env.development
 
 # IDE
 .vscode/
@@ -38,5 +36,9 @@ Thumbs.db
 npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
+
 # Bolt
 .bolt/
+
+# Archives
+*.zip

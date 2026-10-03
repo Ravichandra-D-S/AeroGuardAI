@@ -1,37 +1,4 @@
-from pathlib import Path
-
-import joblib
-import pandas as pd
-
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-DATA_PATH = BASE_DIR / "data" / "aircraft_maintenance_dataset.csv"
-FAILURE_MODEL_PATH = BASE_DIR / "models" / "failure_model.pkl"
-RUL_MODEL_PATH = BASE_DIR / "models" / "rul_model.pkl"
-
-
-FEATURES = [
-    "flight_hours",
-    "engine_cycles",
-    "engine_temperature_c",
-    "oil_pressure_psi",
-    "fuel_flow_kg_hr",
-    "vibration_mm_s",
-    "engine_rpm",
-    "hydraulic_pressure_psi",
-    "battery_voltage_v",
-    "ambient_temperature_c",
-    "aircraft_age_years",
-    "last_maintenance_days",
-    "maintenance_count",
-    "fault_history_count",
-    "component_wear_pct",
-    "fuel_efficiency_pct",
-    "sensor_anomaly_count",
-    "aircraft_model",
-    "maintenance_type",
-]
+from api.supabase_client import supabase
 
 
 def get_risk_level(probability):
@@ -69,72 +36,86 @@ def get_maintenance_priority(risk_level, rul_hours):
     return "NORMAL"
 
 
-def load_models():
+def get_fleet_predictions():
     """
-    Load the trained ML models.
+    Read stored prediction results from Supabase.
     """
 
-    failure_model = joblib.load(FAILURE_MODEL_PATH)
-    rul_model = joblib.load(RUL_MODEL_PATH)
+    predictions_response = (
+        supabase
+        .table("predictions")
+        .select(
+            """
+            id,
+            aircraft_id,
+            failure_probability,
+            failure_probability_percent,
+            risk_level,
+            remaining_useful_life_hours,
+            maintenance_priority
+            """
+        )
+        .order("id")
+        .execute()
+    )
 
-    return failure_model, rul_model
+    return predictions_response.data or []
+
+
+def get_aircraft_models():
+    """
+    Read aircraft model information from Supabase.
+    """
+
+    aircraft_response = (
+        supabase
+        .table("aircraft")
+        .select("aircraft_id, aircraft_model")
+        .execute()
+    )
+
+    return {
+        item["aircraft_id"]: item["aircraft_model"]
+        for item in (aircraft_response.data or [])
+    }
 
 
 def generate_predictions():
     """
-    Generate ML predictions for every maintenance record.
+    Compatibility function used by aircraft.py and alerts.py.
+
+    Returns stored prediction records from Supabase
+    in the same general structure expected by those modules.
     """
 
-    df = pd.read_csv(DATA_PATH)
-
-    failure_model, rul_model = load_models()
-
-    X = df[FEATURES]
-
-    failure_probabilities = failure_model.predict_proba(X)[:, 1]
-
-    rul_predictions = rul_model.predict(X)
+    predictions = get_fleet_predictions()
+    aircraft_models = get_aircraft_models()
 
     records = []
 
-    for index, row in df.iterrows():
-
-        failure_probability = float(failure_probabilities[index])
-
-        rul_hours = max(float(rul_predictions[index]), 0)
-
-        risk_level = get_risk_level(failure_probability)
-
-        maintenance_priority = get_maintenance_priority(
-            risk_level,
-            rul_hours,
-        )
+    for prediction in predictions:
+        aircraft_id = prediction["aircraft_id"]
 
         records.append(
             {
-                "record_id": row["record_id"],
-                "aircraft_id": row["aircraft_id"],
-                "aircraft_model": row["aircraft_model"],
-                "failure_probability": round(
-                    failure_probability,
-                    4,
+                "record_id": prediction["id"],
+                "aircraft_id": aircraft_id,
+                "aircraft_model": aircraft_models.get(
+                    aircraft_id,
+                    "Unknown",
                 ),
-                "failure_probability_percent": round(
-                    failure_probability * 100,
-                    2,
+                "failure_probability": float(
+                    prediction["failure_probability"]
                 ),
-                "risk_level": risk_level,
-                "remaining_useful_life_hours": round(
-                    rul_hours,
-                    1,
+                "failure_probability_percent": float(
+                    prediction["failure_probability_percent"]
                 ),
-                "maintenance_priority": maintenance_priority,
-                "flight_hours": row["flight_hours"],
-                "component_wear_pct": row["component_wear_pct"],
-                "vibration_mm_s": row["vibration_mm_s"],
-                "engine_temperature_c": row["engine_temperature_c"],
-                "last_maintenance_days": row[
-                    "last_maintenance_days"
+                "risk_level": prediction["risk_level"],
+                "remaining_useful_life_hours": float(
+                    prediction["remaining_useful_life_hours"]
+                ),
+                "maintenance_priority": prediction[
+                    "maintenance_priority"
                 ],
             }
         )
@@ -142,69 +123,60 @@ def generate_predictions():
     return records
 
 
-def get_priority_rank(priority):
-    """
-    Convert maintenance priority into a numeric severity rank.
-    """
-
-    priority_ranks = {
-        "NORMAL": 1,
-        "MEDIUM": 2,
-        "HIGH": 3,
-        "CRITICAL": 4,
-    }
-
-    return priority_ranks.get(priority, 1)
-
-
-def aggregate_aircraft(records):
+def aggregate_aircraft(records, aircraft_models):
     """
     Convert record-level predictions into one summary
     per aircraft.
-
-    There are 500 maintenance records and 50 aircraft,
-    so each aircraft will have multiple records.
     """
 
-    records_df = pd.DataFrame(records)
+    aircraft_groups = {}
+
+    for record in records:
+        aircraft_id = record["aircraft_id"]
+
+        if aircraft_id not in aircraft_groups:
+            aircraft_groups[aircraft_id] = []
+
+        aircraft_groups[aircraft_id].append(record)
 
     aircraft_list = []
 
-    for aircraft_id, group in records_df.groupby("aircraft_id"):
+    for aircraft_id, group in aircraft_groups.items():
 
-        average_probability = group[
-            "failure_probability"
-        ].mean()
+        probabilities = [
+            float(record["failure_probability"])
+            for record in group
+        ]
 
-        highest_probability = group[
-            "failure_probability"
-        ].max()
+        rul_values = [
+            float(record["remaining_useful_life_hours"])
+            for record in group
+        ]
 
-        minimum_rul = group[
-            "remaining_useful_life_hours"
-        ].min()
+        average_probability = (
+            sum(probabilities) / len(probabilities)
+        )
 
-        # Aircraft-level risk is based on the
-        # average predicted failure probability.
+        highest_probability = max(probabilities)
+
+        minimum_rul = min(rul_values)
+
         risk_level = get_risk_level(
             average_probability
         )
 
-        # Maintenance priority considers the aircraft's
-        # overall risk and its minimum predicted RUL.
         maintenance_priority = get_maintenance_priority(
             risk_level,
             minimum_rul,
         )
 
-        aircraft_model = group[
-            "aircraft_model"
-        ].iloc[0]
-
         aircraft_list.append(
             {
                 "aircraft_id": aircraft_id,
-                "aircraft_model": aircraft_model,
+                "aircraft_model": aircraft_models.get(
+                    aircraft_id,
+                    "Unknown",
+                ),
                 "records_analyzed": len(group),
                 "average_failure_probability_percent": round(
                     average_probability * 100,
@@ -286,11 +258,8 @@ def build_fleet_summary(aircraft):
 
 def get_top_risk_aircraft(aircraft, limit=10):
     """
-    Return the aircraft with the highest average
+    Return aircraft with the highest average
     failure probability.
-
-    Highest individual probability and lowest RUL
-    are used as secondary sorting criteria.
     """
 
     sorted_aircraft = sorted(
@@ -313,9 +282,16 @@ def get_fleet_summary():
 
     records = generate_predictions()
 
-    aircraft = aggregate_aircraft(records)
+    aircraft_models = get_aircraft_models()
 
-    summary = build_fleet_summary(aircraft)
+    aircraft = aggregate_aircraft(
+        records,
+        aircraft_models,
+    )
+
+    summary = build_fleet_summary(
+        aircraft
+    )
 
     top_risk_aircraft = get_top_risk_aircraft(
         aircraft

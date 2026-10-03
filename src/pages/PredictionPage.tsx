@@ -1,110 +1,167 @@
-import { useState, useEffect } from 'react';
-import { Brain, Info, ArrowRight } from 'lucide-react';
-import type { PageId, PredictionInput, PredictionResult } from '@/types/aircraft';
-import { PredictionForm } from '@/components/prediction/PredictionForm';
-import { PredictionResultCard } from '@/components/prediction/PredictionResultCard';
-import { Card } from '@/components/ui/Card';
-import { predictMaintenanceRisk, predictionServiceInfo } from '@/services/predictionService';
-import { getAircraftById } from '@/data/aircraftData';
+import { useState } from 'react';
+import { PredictionForm } from '../components/prediction/PredictionForm';
+import { PredictionResultCard } from '../components/prediction/PredictionResultCard';
+import {
+  predictMaintenanceRisk,
+  predictionServiceInfo,
+} from '../services/predictionService';
+import type {
+  PredictionInput,
+  PredictionResult,
+} from '../types/aircraft';
 
-interface PredictionPageProps {
-  presetAircraftId?: string;
-  onNavigate: (page: PageId, aircraftId?: string) => void;
-}
-
-export function PredictionPage({ presetAircraftId, onNavigate }: PredictionPageProps) {
-  const [result, setResult] = useState<PredictionResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [lastInput, setLastInput] = useState<PredictionInput | null>(null);
-
-  useEffect(() => {
-    if (presetAircraftId) {
-      const ac = getAircraftById(presetAircraftId);
-      if (ac) {
-        const input: PredictionInput = {
-          aircraftId: ac.id,
-          engineHours: ac.engineHours,
-          temperature: ac.temperature,
-          vibration: ac.vibration,
-          fuelEfficiency: ac.fuelEfficiency,
-          daysSinceMaintenance: ac.daysSinceMaintenance,
-          faultHistory: ac.previousFaults,
-        };
-        handlePredict(input);
-      }
-    }
-  }, [presetAircraftId]);
+export function PredictionPage() {
+  const [prediction, setPrediction] = useState<PredictionResult | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handlePredict = async (input: PredictionInput) => {
-    setLoading(true);
-    setLastInput(input);
-    try {
-      const r = await predictMaintenanceRisk(input);
-      setResult(r);
-    } catch {
-      setResult(null);
-    } finally {
-      setLoading(false);
-    }
-  };
+    setIsLoading(true);
+    setError(null);
+    setPrediction(null);
 
-  const handleReset = () => {
-    setResult(null);
-    setLastInput(null);
+    try {
+      const result = await predictMaintenanceRisk(input);
+      setPrediction(result);
+    } catch (err) {
+      console.error('Prediction error:', err);
+
+      setError(
+        'Unable to connect to the AeroGuard AI prediction service. Make sure the FastAPI backend is running on port 8000.',
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white">AI Risk Prediction</h1>
-        <p className="mt-1 text-sm text-slate-400">
-          Enter aircraft health parameters to predict maintenance risk using the AI model
+        <h1 className="text-2xl font-bold">Predictive Maintenance</h1>
+
+        <p className="mt-1 text-sm opacity-70">
+          Analyze aircraft health data using the trained AeroGuard AI
+          predictive maintenance models.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <PredictionForm onPredict={handlePredict} loading={loading} />
+      <div className="rounded-lg border p-3 text-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-semibold">Prediction Engine:</span>
 
-        <div className="space-y-4">
-          <PredictionResultCard
-            result={result}
-            loading={loading}
-            input={lastInput}
-            onReset={handleReset}
+          <span
+            className={`rounded-full px-2 py-1 text-xs font-semibold ${
+              predictionServiceInfo.status === 'live'
+                ? 'bg-green-100 text-green-700'
+                : 'bg-yellow-100 text-yellow-700'
+            }`}
+          >
+            {predictionServiceInfo.status === 'live'
+              ? 'LIVE'
+              : 'DEMO'}
+          </span>
+        </div>
+
+        <p className="mt-2 opacity-70">
+          {predictionServiceInfo.description}
+        </p>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="rounded-xl border p-5">
+          <PredictionForm
+            onPredict={handlePredict}
+            isLoading={isLoading}
           />
+        </div>
 
-          {result && (
-            <button
-              onClick={() => onNavigate('planner', lastInput?.aircraftId)}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-700/60 bg-slate-800/50 px-4 py-3 text-sm font-semibold text-slate-200 transition-colors hover:border-blue-500/40 hover:bg-slate-800 hover:text-blue-400"
-            >
-              Go to Maintenance Planner
-              <ArrowRight className="h-4 w-4" />
-            </button>
-          )}
+        <div>
+          {isLoading && (
+            <div className="flex min-h-[300px] items-center justify-center rounded-xl border p-6">
+              <div className="text-center">
+                <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-current border-t-transparent" />
 
-          <Card>
-            <div className="flex items-start gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-400">
-                <Info className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-white">About the Prediction Engine</p>
-                <p className="mt-1 text-xs leading-relaxed text-slate-400">
-                  {predictionServiceInfo.description}
+                <p className="font-semibold">
+                  Analyzing aircraft condition...
                 </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <span className="rounded-md bg-slate-700/40 px-2 py-0.5 text-[11px] font-mono text-slate-300">
-                    Status: {predictionServiceInfo.status}
-                  </span>
-                  <span className="rounded-md bg-slate-700/40 px-2 py-0.5 text-[11px] font-mono text-slate-300">
-                    Future API: {predictionServiceInfo.futureEndpoint}
-                  </span>
-                </div>
+
+                <p className="mt-1 text-sm opacity-70">
+                  Running failure-risk and remaining-useful-life models.
+                </p>
               </div>
             </div>
-          </Card>
+          )}
+
+          {!isLoading && error && (
+            <div className="rounded-xl border border-red-300 p-6">
+              <h2 className="font-semibold text-red-600">
+                Prediction Failed
+              </h2>
+
+              <p className="mt-2 text-sm opacity-80">{error}</p>
+
+              <p className="mt-3 text-xs opacity-60">
+                Backend endpoint: {predictionServiceInfo.futureEndpoint}
+              </p>
+            </div>
+          )}
+
+          {!isLoading && !error && prediction && (
+            <PredictionResultCard result={prediction} />
+          )}
+
+          {!isLoading && !error && !prediction && (
+            <div className="flex min-h-[300px] items-center justify-center rounded-xl border p-6">
+              <div className="max-w-md text-center">
+                <h2 className="font-semibold">
+                  Ready for Analysis
+                </h2>
+
+                <p className="mt-2 text-sm opacity-70">
+                  Enter or review the aircraft health parameters and run a
+                  prediction to see failure probability, maintenance
+                  priority, and estimated remaining useful life.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
+      </div>
+
+      <div className="rounded-xl border p-5">
+        <h2 className="font-semibold">About the Prediction Engine</h2>
+
+        <p className="mt-2 text-sm opacity-70">
+          {predictionServiceInfo.description}
+        </p>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div className="rounded-lg border p-4">
+            <p className="text-xs uppercase tracking-wide opacity-60">
+              Service Status
+            </p>
+
+            <p className="mt-1 font-semibold">
+              {predictionServiceInfo.status === 'live'
+                ? 'Connected to FastAPI'
+                : 'Frontend Demo'}
+            </p>
+          </div>
+
+          <div className="rounded-lg border p-4">
+            <p className="text-xs uppercase tracking-wide opacity-60">
+              API Endpoint
+            </p>
+
+            <p className="mt-1 font-mono text-sm">
+              {predictionServiceInfo.futureEndpoint}
+            </p>
+          </div>
+        </div>
+
+        <p className="mt-4 text-xs opacity-60">
+          Synthetic demonstration data is used for this hackathon MVP.
+        </p>
       </div>
     </div>
   );
