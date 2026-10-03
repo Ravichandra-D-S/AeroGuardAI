@@ -5,6 +5,9 @@ import { RiskBadge } from '@/components/ui/RiskBadge';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+
 interface FleetMonitoringPageProps {
   onNavigate: (page: PageId, aircraftId?: string) => void;
 }
@@ -64,8 +67,8 @@ export function FleetMonitoringPage({
         setError(null);
 
         const response = await fetch(
-          'http://127.0.0.1:8000/api/fleet',
-        );
+  `${API_BASE_URL}/api/fleet`,
+);
 
         if (!response.ok) {
           throw new Error(

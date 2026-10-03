@@ -52,7 +52,8 @@ interface PriorityCard {
   count: (tasks: Task[]) => number;
 }
 
-const API = 'http://127.0.0.1:8000';
+const API =
+  import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
 const priorityCards: PriorityCard[] = [
   {
@@ -96,9 +97,9 @@ function getPriority(
   risk: RiskLevel,
   rul: number,
 ): 1 | 2 | 3 | 4 {
-  if (priority === 'CRITICAL' || risk === 'CRITICAL' || rul < 100) return 1;
-  if (priority === 'HIGH' || risk === 'HIGH' || rul < 200) return 2;
-  if (priority === 'MEDIUM' || risk === 'MEDIUM' || rul < 300) return 3;
+ if (priority === 'CRITICAL' || risk === 'Critical' || rul < 100) return 1;
+if (priority === 'HIGH' || risk === 'High' || rul < 200) return 2;
+if (priority === 'MEDIUM' || risk === 'Medium' || rul < 300) return 3;
   return 4;
 }
 
