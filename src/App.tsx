@@ -9,9 +9,7 @@ import { PredictionPage } from '@/pages/PredictionPage';
 import { MaintenancePlannerPage } from '@/pages/MaintenancePlannerPage';
 import { ReportsPage } from '@/pages/ReportsPage';
 
-
 function App() {
-  
   const [page, setPage] = useState<PageId>('dashboard');
   const [selectedAircraft, setSelectedAircraft] = useState<string>('');
   const [predictionAircraft, setPredictionAircraft] = useState<
@@ -112,6 +110,7 @@ function App() {
       <div className="lg:pl-64">
         <Header
           onOpenSidebar={() => setMobileSidebarOpen(true)}
+          onNavigate={handleNavigate}
         />
 
         <main className="mx-auto max-w-7xl px-4 py-6 lg:px-8 lg:py-8">
